@@ -32,25 +32,30 @@ app.use(cookieParser());
 
 // request interceptor
 app.use((req, res, next) => {
+  let encoding = proxyRes.headers['content-encoding'];
   if (req.url === '/' || ['localhost', '127.0.0.1', getDeviceLocalIp()].includes(req.hostname)) {
     res.status(400).send('Invalid target URL.');
     return;
   }
+
   console.log('Request Headers:', req.headers);
   console.log('Request URL:', req.url);
   console.log('Request Method:', req.method);
-  console.log('Request Body:', req.body);
 
   let body = [];
   req.on('data', (chunk) => body.push(chunk));
   req.on('end', () => {
-    body = Buffer.concat(body).toString();
-    if (body) console.log('Request Body:', body);
+    body = Buffer.concat(body);
+    bufferBodyParser(body, encoding)
+      .then(res => {
+        body = null;
+        if (res) console.log('Request Body:', res);
+      });
     next();
   });
 });
 
-const responseParser = (bodyBuffer, encoding) => {
+const bufferBodyParser = (bodyBuffer, encoding) => {
   return new Promise((resolve, reject) => {
     if (encoding === 'gzip') {
       zlib.gunzip(bodyBuffer, (err, decoded) => {
@@ -101,8 +106,9 @@ const showResponseBody = (proxyRes, res) => {
   });
 
   proxyRes.on('end', async () => {
-    const bodyBuffer = Buffer.concat(responseBody);
-    console.log('Response Body:', await responseParser(bodyBuffer, encoding));
+    responseBody = Buffer.concat(responseBody);
+    console.log('Response Body:', await bufferBodyParser(responseBody, encoding));
+    responseBody = null;
   });
 }
 
